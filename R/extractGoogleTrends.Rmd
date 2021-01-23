@@ -1,0 +1,77 @@
+```{r}
+install.packages("gtrendsR")
+library(gtrendsR)
+library(tidyverse)
+
+```
+
+
+
+
+```{r}
+
+googleKeyWords <- function(keyword){
+  
+  a <- gtrends(keyword, time = "now 7-d")
+  b <- a$interest_by_country
+  
+  europeanUnion <- c("Austria","Belgium","Bulgaria","Croatia","Cyprus",
+                     "Czech Rep.","Denmark","Estonia","Finland","France",
+                     "Germany","Greece","Hungary","Ireland","Italy","Latvia",
+                     "Lithuania","Luxembourg","Malta","Netherlands","Poland",
+                     "Portugal","Romania","Slovakia","Slovenia","Spain",
+                     "Sweden","United Kingdom")
+  
+  d <- 
+    b %>%
+    filter(location %in% europeanUnion) %>%
+    select(c(location, hits, keyword)) %>%
+    mutate(hits = as.numeric(hits)) %>%
+    as.data.frame()
+  
+  return(d)
+  
+}
+
+```
+
+
+```{r}
+movies <- read_csv("https://raw.githubusercontent.com/peetck/IMDB-Top1000-Movies/master/IMDB-Movie-Data.csv")
+
+```
+
+
+
+
+```{r}
+movieNames <- movies$Title
+
+movieNames
+```
+
+
+```{r}
+results <- movieNames[1:1000] %>%
+  purrr::map_df(googleKeyWords)
+
+
+```
+
+
+```{r}
+results %>%
+  write_csv("../data/googleTrends/googleTrends_long.csv")
+```
+
+
+```{r}
+results_wide <- 
+  results %>%
+  pivot_wider(names_from = keyword, values_from = hits, values_fn = mean)
+
+results %>%
+  write_csv("../data/googleTrends/googleTrends_wide.csv")
+
+```
+
