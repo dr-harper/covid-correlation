@@ -1,26 +1,155 @@
-```{r}
-install.packages("gtrendsR")
-library(gtrendsR)
-library(tidyverse)
+---
+title: Process Data
+author: Michael Harper
+date: 23rd January 2021
+---
 
+```{r setup, include =F}
+library(tidyverse)
+library(gtrendsR)
+```
+
+
+The purpose of this file is to load and process the required data for the analysis. This includes:
+
+- Severity Index
+- Excess Deaths
+- Spatial data for mapping
+- Google trends data: search popularity across Europe for the top 1000 IMDB movies. You'll see later where this comes in ;)
+
+Note, these data sources have been used to closely replicate those provided by Joel as explained in this Tweet here: https://twitter.com/RealJoelSmalley/status/1352618428801155079
+
+# Setup
+
+```{r}
+# List countries required for analysis
+europeanUnion <- c("Austria","Belgium","Bulgaria","Croatia","Cyprus",
+                   "Czech Rep.","Denmark","Estonia","Finland","France",
+                   "Germany","Greece","Hungary","Ireland","Italy","Latvia",
+                   "Lithuania","Luxembourg","Malta","Netherlands","Poland",
+                   "Portugal","Romania","Slovakia","Slovenia","Spain",
+                   "Sweden","United Kingdom")
+
+checkCountriesMissing <- function(df, name = "CountryName"){
+  
+  namesInData <- unique(df[[name]])
+  return(namesInData[!(namesInData %in% europeanUnion)])
+  
+}
 ```
 
 
 
+# Spatial Boundaries
+
 
 ```{r}
+
+library(spData)
+
+eu_map <- 
+  spData::world %>%
+  st_as_sf() %>%
+  select(name_long, continent) %>%
+  rename("CountryName" = "name_long") %>%
+  filter(continent == "Europe") %>%
+  filter(CountryName != "Russian Federation")
+
+
+
+sf::write_sf(eu_map, "../data/eu_boundaries.gpkg")
+
+
+europeanUnion <- c(eu_map$CountryName)
+
+ggplot(eu_map) + 
+  geom_sf()
+
+```
+
+# Severity Index
+
+The severity index scores the level of interventions provides a measure of the how much restriction is in place to control Covid. More is explained here: https://www.bsg.ox.ac.uk/research/research-projects/coronavirus-government-response-tracker
+
+Here we simply download the data and save a copy to the repository.
+
+```{r}
+df_severity <- read_csv("https://raw.githubusercontent.com/OxCGRT/covid-policy-tracker/master/data/OxCGRT_latest_combined.csv", col_types = cols())
+
+# Just extract national totals
+df_severity_edit <- 
+  df_severity %>%
+  filter(Jurisdiction == "NAT_TOTAL", 
+         CountryName %in% europeanUnion) %>%
+  mutate(Date = lubridate::parse_date_time(Date, "ymd")) %>%
+  select(c(CountryName, CountryCode, Date, StringencyIndex, StringencyIndexForDisplay)) 
+
+df_severity_edit %>%
+  write_csv("../data/stringency.csv")
+
+df_severity_edit
+```
+
+# Excess Deaths
+
+The excess death dataset is proivded for the EU. Again making sure to use the same dataset as Joel for direct comparison.
+
+```{r}
+
+data <- read.csv("https://opendata.ecdc.europa.eu/covid19/casedistribution/csv", na.strings = "", fileEncoding = "UTF-8-BOM") 
+
+library(lubridate)
+
+data_deaths <- 
+  data %>%
+  mutate(dateRep = lubridate::parse_date_time(dateRep, "dmy"),
+         countriesAndTerritories = str_replace_all(countriesAndTerritories, "_", " "),
+         countriesAndTerritories = str_replace_all(countriesAndTerritories, "Czechia", "Czech Republic")) %>% 
+  filter(countriesAndTerritories %in% europeanUnion) %>%
+  select(c(countriesAndTerritories, countryterritoryCode, dateRep, cases_weekly, deaths_weekly)) %>%
+  rename(c("CountryName" = "countriesAndTerritories", "CountryCode" = "countryterritoryCode", "Date"  ="dateRep"))
+
+data_deaths
+
+data_deaths %>%
+  write_csv("../data/euromomo/covidCasesDeaths.csv")
+
+
+```
+
+# Join Datasets
+
+Will make a single dataframe which combines the two datasets:
+
+```{r}
+df_combined <- data_deaths %>%
+  left_join(df_severity_edit, by = c("CountryName", "CountryCode", "Date"))
+
+```
+
+```{r}
+df_combined %>%
+  write_csv("../data/dataCombined.csv")
+```
+
+
+# Google Trends
+
+```{r}
+
+europeanUnion <- c("Austria","Belgium","Bulgaria","Croatia","Cyprus",
+                   "Czech Rep.","Denmark","Estonia","Finland","France",
+                   "Germany","Greece","Hungary","Ireland","Italy","Latvia",
+                   "Lithuania","Luxembourg","Malta","Netherlands","Poland",
+                   "Portugal","Romania","Slovakia","Slovenia","Spain",
+                   "Sweden","United Kingdom")
+
+
 
 googleKeyWords <- function(keyword){
   
   a <- gtrends(keyword, time = "now 7-d")
   b <- a$interest_by_country
-  
-  europeanUnion <- c("Austria","Belgium","Bulgaria","Croatia","Cyprus",
-                     "Czech Rep.","Denmark","Estonia","Finland","France",
-                     "Germany","Greece","Hungary","Ireland","Italy","Latvia",
-                     "Lithuania","Luxembourg","Malta","Netherlands","Poland",
-                     "Portugal","Romania","Slovakia","Slovenia","Spain",
-                     "Sweden","United Kingdom")
   
   d <- 
     b %>%
@@ -32,22 +161,13 @@ googleKeyWords <- function(keyword){
   return(d)
   
 }
-
 ```
 
+For the lookup, we will just take the list of the top 1000 movies from IMDB.
 
 ```{r}
 movies <- read_csv("https://raw.githubusercontent.com/peetck/IMDB-Top1000-Movies/master/IMDB-Movie-Data.csv")
-
-```
-
-
-
-
-```{r}
 movieNames <- movies$Title
-
-movieNames
 ```
 
 
@@ -55,9 +175,10 @@ movieNames
 results <- movieNames[1:1000] %>%
   purrr::map_df(googleKeyWords)
 
-
+results
 ```
 
+Save the data in both the wide and long format:
 
 ```{r}
 results %>%
@@ -74,4 +195,24 @@ results %>%
   write_csv("../data/googleTrends/googleTrends_wide.csv")
 
 ```
+
+
+
+
+
+
+
+```{r}
+data_deaths_selected <- data_deaths %>%
+  filter(countriesAndTerritories %in% c("Slovenia"))
+```
+
+
+```{r}
+ggplot(data_deaths_selected) +
+  geom_col(aes(x = dateRep, y = deaths_weekly))
+```
+
+
+
 
