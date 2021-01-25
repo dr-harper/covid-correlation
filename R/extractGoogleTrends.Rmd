@@ -117,6 +117,17 @@ data_deaths %>%
 
 ```
 
+
+```{r}
+df_population <- read_csv("https://datahub.io/JohnSnowLabs/population-figures-by-country/r/population-figures-by-country-csv.csv")  %>% 
+  select(c(Country_Code, Year_2016)) %>%
+  set_names(c("CountryCode", "Population")) %>%
+  mutate(Population = Population / 10^6)
+
+df_population
+```
+
+
 # Join Datasets
 
 Will make a single dataframe which combines the two datasets:
@@ -125,6 +136,8 @@ Will make a single dataframe which combines the two datasets:
 df_combined <- data_deaths %>%
   left_join(df_severity_edit, by = c("CountryName", "CountryCode", "Date"))
 
+df_combined %>%
+  left_join(df_population)
 ```
 
 ```{r}
