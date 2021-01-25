@@ -17,8 +17,6 @@ library(ggthemr)
 library(dtwclust)
 library(imputeTS)
 
-# ggthemr::ggthemr()
-
 knitr::opts_chunk$set(echo = F,
                       warning = F,
                       message = F,
@@ -31,14 +29,18 @@ Recent analysis came out claiming that there was evidence of a East to West patt
 
 <blockquote class="twitter-tweet"><p lang="en" dir="ltr">COVID mortality follows a distinct pattern across Europe, from West to East, apparently determined almost entirely by physical geography and season. There is, however, no apparent correlation between severity of policy intervention and mortality. <a href="https://t.co/mKacsWru7u">pic.twitter.com/mKacsWru7u</a></p>&mdash; Joel Smalley (@RealJoelSmalley) <a href="https://twitter.com/RealJoelSmalley/status/1352606263838973953?ref_src=twsrc%5Etfw">January 22, 2021</a></blockquote> <script async src="https://platform.twitter.com/widgets.js" charset="utf-8"></script>
 
-The purpose of this article is to provide a statistical review of the claims made, and to help provide a clearer explanation around the work. Most importantly, I also hope to guide people who may not be familiar with statistical processes. Please reach out to me if you have any queries!
+The purpose of this article is to provide a statistical review of the claims made, and to help provide a clearer explanation around the work. Please reach out to me if you have any queries!
 
-If this article looks long and overly detailed, **that is the very point**. I want to explain the decisions along the way which are being made and will aim to be as objective as possible. I have however provided a brief summary at the top if you would like.
+If this article looks long and overly detailed, **that is the very point**. I want to explain the decisions along the way which are being made and will aim to be as objective as possible, and to do so in a way which is hopefully not too intimidating if you aren't overly familiar with statistical analysis. 
+
+As a final reminder, **I am not here to knock Joel**! Kudos to him for questioning and exploring data. I admire that people want to explore evidence and understand Covid, and as people flag, science is about asking questions. But science is also about peer review, and this article is designed to provide some important feedback and consideration for the conclusions reached in the original work. I raise genuine concerns around the conclusions reached by Joel, and hope that amendments can be made to the work.
 
 # Summary of findings
 
-- The pattern of Covid-related deaths for Europe do seem to show a general separation from east to West. This has been demonstrated through additional statistical modelling.
-- The
+- The pattern of Covid-related deaths for Europe do seem to show a general separation from East to West, although with notable outliers (Portugal). This is backed up with some additional statistical analysis
+- Although the work by Joel provides examples of his relationship, no statistical analysis is conducted, and therefore claims ofcorrelation between geography and Covid cannot be substantiated
+- Statistical analysis highlights that the stringency of lockdown is strongly associated with the Covid patterns.
+- Although the exploratory data analysis is interesting, I would suggest that revisions are made to the original claims in light of the findings of this review.
 
 ---------
 
@@ -52,54 +54,45 @@ So, let's start with the original claims:
 
 > "The similarity in distribution of COVID deaths in countries that share the same longitude is striking. Where I have done the analysis, it fits the profile of usual seasonal mortality."
 
-We can view this chain of thinking below:
-
-```{r}
-# Include Graphic
-```
-
 Several questions are raised by this analysis:
 
 - **Is the evidence presented a clear sign of correlation?** The original post infers that there is correlation between longitude and the patterns in Covid deaths. However, this has all been derived by visual inspect of the graphs, and no numerical value is provided.
 - **Do we have a case to build a causative relationship between the two?** Joel states that because of the above correlation, the cause is *"almost entirely by physical geography and season"*. Is there sufficient evidence to make this claim, and are there other potential explanatory variables?
 
+---------
+
 # Recreating the analysis
 
-To ensure a fair comparison, it is important we first recreate the analysis. As no methodology was published, we are going to try and get as much information out of the tweets as possible. I provide all my processing within GitHub for others to review, so please feel free to look if you want to understand more. If the assumptions are wrong, they can be tweaked.
+To ensure a fair comparison, it is important we first recreate the analysis. As no methodology was published, we are going to try and get as much information out of the tweets as possible. I provide all my processing within [GitHub](https://github.com/dr-harper/covid-correlation/blob/main/R/analysis.Rmd) for others to review, so please feel free to look if you want to understand more. If the assumptions are wrong, they can be tweaked.
 
 ## Data Sources
 
 Two data sources were provided:
 
 - The severity index scores the level of interventions provides a measure of the how much restriction is in place to control Covid. Essentially under normal conditions this would be equal to 0, and as measure such as lockdowns get introduced, this can be increased up to a value of 100. More is explained [here](https://www.bsg.ox.ac.uk/research/research-projects/coronavirus-government-response-tracker).
-- Weekly Covid deaths per country, as provided by the [EU Open Data Portal(https://data.europa.eu/euodp/en/data/dataset/covid-19-coronavirus-data-weekly-from-17-december-2020)/ Note the dataset used here is slightly behind, only going up until December. As with all death related datasets, there can be a delay in these fully representing the data.
+- Weekly Covid deaths per country, as provided by the [EU Open Data Portal](https://data.europa.eu/euodp/en/data/dataset/covid-19-coronavirus-data-weekly-from-17-december-2020)/ Note the dataset used here is slightly behind, only going up until December. As with all death related datasets, there can be a delay in these fully representing the data.
 
 ```{r, message = F}
 df <- read_csv("../data/dataCombined.csv") %>%
   mutate(Date = lubridate::ymd(Date))
 
 boundaries <- sf::read_sf("../data/eu_boundaries.gpkg")
-```
 
-### Time Periods
+# --- Add time periods to data
 
-As the analysis did not provide a definition from the time periods used for Spring and Winter. The standard definitions for Spring and Winter do not capture the data great (winter technically starts on the 21st December), so instead we will use:
+# As the analysis did not provide a definition from the time periods used for Spring and Winter. The standard definitions for Spring and Winter do not capture the data great (winter technically starts on the 21st December), so instead we will Spring from start of March until 1st June and Winter from October until present.
 
-- Spring from start of March until 1st June
-- Winter from October until present
+# This kind of merges Summer and Autumn into one season, but it is not considered too important within the context of the analysis.
 
-```{r}
 df <- df %>%
   mutate(Period = ifelse(Date < "2020-06-01", "Spring",
                          ifelse(Date < "2020-10-01", "Summer",
                                 "Winter")))
 ```
 
-This kind of merges Summer and Autumn into one season, but it is not considered too important within the context of the analysis.
-
 ## Summary Map
 
-Okay, the article starts with a summary of the deaths in Winter and Spring. This recreation is shown below. The colour scale is a bit off, but you can see the point! I've include the whole of Europe for arguments sake.
+Okay, the article starts with a summary of the deaths in Winter and Spring. This recreation is shown in Figure \@ref(fig:mapDeath). The colour scale is a bit off, but you can see the point! I've include the whole of Europe for arguments sake.
 
 ```{r mapDeath, fig.cap = "Map comparing Spring and Winter Covid Deaths, reproduced based on Joel Smalley's work"}
 df_summary <- df %>%
@@ -128,9 +121,9 @@ ggplot(boundaries_summary) +
         strip.background = element_blank(),
         strip.text = element_text(face = "bold"),
         legend.background = element_blank(),
-        legend.position = "bottom")
+        legend.position = "right")
 ```
-I am not entirely sure what point this graph is trying to prove, but it does demonstrate there are countries in Eastern Europe which were relatively minimal impact in Spring while are more so in Winter.
+I am not entirely sure what point this map is trying to prove, but it does demonstrate there are countries in Eastern Europe which were relatively minimal impact in Spring while are more so in Winter. Many countries in Western Europe seem to have had two spikes (i.e. United Kingdom).
 
 ## Time Plots
 
@@ -205,6 +198,8 @@ So, how would I review this clustering by Joel?
 
 It is really important to say that this provides empirical evidence of something interesting, but in the format presented by Joel, it cannot be used to assert the claims made. The grouping appears done by manual classification, and no numerical justification provided beyond the graphs, so we cannot directly correlate in this format that East/West has an impact. But is there any way we might be able to explore this concept further? We can explore that further below:
 
+---------
+
 # Exploring East/West Correlation
 
 Okay, so hopefully all of the work so far has made sense! As mentioned above, the above work from Joel provided a useful framing of the problem, but did not statistically prove a relationship from East to West. This section will explore this and try and understand if there is correlation.
@@ -249,7 +244,7 @@ df_selected_wide_ts <-
   na_interpolation()
 
 # Load series
-model <- tsclust(df_selected_wide_ts, type = "partitional",  distance = "sbd", centroid = "mean",  k = 8, trace = T, seed = 123)
+model <- tsclust(df_selected_wide_ts, type = "partitional",  distance = "sbd", centroid = "mean",  k = 8, trace = F, seed = 123)
 
 plot(model)
 ```
@@ -279,22 +274,21 @@ ggplot(boundaries_results) +
 After some exploring the cluster size, I decided it would be better to cut it down from 8. As you can see from the plot above, it is hard to tell the difference between each group, and therefore risked making it more confusing. Figure \@ref(fig:cluster4) shows the results with 4 clusters.
 
 ```{r cluster4, fig.cap = "Graph showing output of clustering with 4 clusters"}
-model <- tsclust(df_selected_wide_ts, type = "partitional",  distance = "sbd", centroid = "mean",  k = 4, trace = T, seed = 123)
+model <- tsclust(df_selected_wide_ts, type = "partitional",  distance = "sbd", centroid = "mean",  k = 4, trace = F, seed = 123)
 
-plot(model) +
-  scale_y_continuous(lim = c(0, 250))
+plot(model) 
 ```
-We can show this on the map again in Figure \@ref(fig:clusterMap4). So it would appear there are some regional relationships in the data! 
+We can show this on the map again in Figure \@ref(fig:clusterMap4). So it would appear there are some regional relationships in the data, although i would caveat the above analysis is fairly lightweight. If I wanted to get this work published in a paper, I would have to do a lot more proof of the relationships, but hey ho, I wrote this analysis quickly over the weekend to get it online before too long.
 
-Again, this has pulled some notably outliers. Portugal for example stands out as a country in Western Europe for having low spring deaths. Countries which appeared to have controlled the virus up until winter (group 2) are more dispersed than other groups.
+Regarding the results, this has pulled some notably outliers. Portugal for example stands out as a country in Western Europe for having low spring deaths. Countries which appeared to have controlled the virus up until winter (group 2) are more dispersed than other groups.
 
 ```{r clusterMap4, fig.cap = "Map of results for clustering"}
-results <- data.frame(CountryName = rownames(df_selected_wide),
+ results_death <- data.frame(CountryName = rownames(df_selected_wide),
                       Cluster = predict(model, df_selected_wide_ts))
 
 boundaries_results <- 
   boundaries %>%
-  left_join(results)
+  left_join(results_death)
 
 plot_deaths <-
   ggplot(boundaries_results) +
@@ -316,9 +310,60 @@ Note, there are more ways we could explore the correlation, and the above result
 
 # So what causes this relationship?
 
-So it does appear that there are some regional relationships within the data (although i would caveat the above analysis is fairly lightweight). If I wanted to get this work published in a paper, I would have to do a lot more proof of the relationships, but hey ho, I wrote this analysis quickly over the weekend to get it online before too long.
+Having established there do appear to be some patterns in the data, we can now explore a bit what might be causing this. Again, to be faithful to the original analysis of Joel, my attention here is focussed to the Stringency Index data provided. As explained at the start, this gives us an indication of the level of restrictions introduced.
 
-Well, a quick check might be worth looking at the severity Index. As explained at the start, this gives us an indication of the level of severity
+```{r, fig.width = 10, fig.height=10}
+df_selected %>%
+  filter(!is.na(StringencyIndex)) %>%
+  ggplot(aes(x = Date)) +
+  geom_line(aes(y = StringencyIndex,)) +
+  facet_wrap(vars(CountryName), ncol = 4, scales = "free_y") +
+  scale_x_date(date_labels = "%b") +
+  scale_y_continuous(lim = c(0, 100)) +
+  labs(y = "Deaths Weekly",
+       title = "Stringency Index per country",
+       subtitle = "",
+       caption = "Data from Coronavirus Government Response Tracker") +
+  theme(legend.position = "bottom")
+```
+
+As with this clustering, there is often a simpler explanation behind things. What is notable is that countries which are grouped exhibited very different behaviours in the original lockdown. Notably, those in Group 4 from eaarlier were typically slower to ramp up the Stringency of lockdowns. The plot below shows the number of deaths which had been occured by the time the Stringency Index had been icnreased to 70.
+
+```{r}
+df_stringency <- 
+  df_selected %>%
+  arrange(CountryName, Date) %>%
+  group_by(CountryName) %>%
+  mutate(deaths_total = cumsum(deaths_weekly)) %>%
+filter(StringencyIndex >= 70) %>%
+    group_by(CountryName) %>% 
+  slice(1) %>%
+  left_join(results_death)
+
+
+  ggplot(df_stringency, aes(x = CountryName, y = deaths_total, fill = as.factor(Cluster))) +
+  geom_col() +
+    facet_grid(vars(Cluster), drop = T, scales = "free", space = "free") +
+    coord_flip() +
+    labs(fill = "Clustering in Data")
+
+```
+
+# Limitations of this work
+
+This work is by no means conclusive. It was primarily designed as a response to the original work from Joel. I would however recommend:
+
+- **More subnational statistics**: viewing relationships at a national level is convenient for the availability of data, but it really doesn't capture the lower level patterns which are important in such analysis.
+- **Considerations of climate**: there were claims within the comments that climate may be a cause of the patterns witnessed. Although literature suggests that this will only have a minimal impact on Covid, it was decided not to include it within this study.
+
+Regarding climate, some literature already seems to suggest this isn't a key factor: https://journals.plos.org/plosone/article?id=10.1371/journal.pone.0238339
+
+# Conclusion
+
+
+```{r}
+knitr::knit_exit()
+```
 
 
 So, if we look at deaths, it does appear that there is grouping of countries as we 
@@ -349,10 +394,9 @@ df_selected_wide_ts <-
 
 
 # Load series
-model <- tsclust(df_selected_wide_ts, type = "partitional",  distance = "sbd", centroid = "mean",  k = 4, trace = T, seed = 1234)
+model <- tsclust(df_selected_wide_ts, type = "partitional",  distance = "sbd", centroid = "mean",  k = 4, trace = F, seed = 1234)
 
-a <- plot(model) +
-  scale_y_continuous(lim = c(0, 100))
+a <- plot(model) 
 
 ```
 
@@ -382,71 +426,8 @@ plot_stringency
 ```
 
 ```{r}
-combined <- 
-  results_stringency %>%
-  set_names(c("CountryName", "DeathsCluster")) %>%
-  left_join(results)
+library(patchwork)
 
-
-ggplot(combined, aes(x = Cluster, y = DeathsCluster, group = Cluster)) +
-  geom_violin()
-```
-
-
-
-
-# But, how can we be sure?
-
-
-
-
-
-
-
-
-```{r}
-knitr::knit_exit()
-```
-
-
-
-
-
-
-
-
-# Classifying Our Countries
-
-
-- 
-
-
-
-
-
-
-```{r fig.height=10, fig.width=6}
-
-
-boundaries_summary <- boundaries %>% 
-  mutate(studied = ifelse(CountryName %in% countries_select, TRUE, FALSE))
-
-ggplot(boundaries_summary) +
-  geom_sf(aes(fill = studied)) +
-  coord_sf(xlim = c(-11, 30), ylim = c(34, 60)) +
-  labs(title = "COVID Mortality, Europe", 
-       fill = "Deaths In Period",
-       caption = "Based off original map produced by Joel Smalley") +
-  theme(axis.text = element_blank(),
-        axis.ticks = element_blank(),
-        axis.line = element_blank(),
-        panel.grid = element_blank(),
-        plot.background = element_rect(fill = "#FAF7F2"),
-        legend.background = element_blank())
+plot_deaths + plot_stringency
 
 ```
-
-
-# Other Factors: Weather?
-
-Signficant debate occured in the thread regarding the original relationship shown by Joel
